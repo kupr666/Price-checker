@@ -1,0 +1,3 @@
+module price_checker
+
+go 1.25.6
