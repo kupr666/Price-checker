@@ -29,6 +29,7 @@ func (s *Storage) Add(item domains.Item) (domains.Item, error) {
 		}
 	}
 	item.ID = s.nextID
+	item.LastChecked = time.Now()
 	s.items[item.ID] = item
 	s.nextID++
 

@@ -1,12 +1,12 @@
-package api
+package main
 
 import (
 	"log"
 	"errors"
 	"net/http"
 	 
-	"price_checker/internal/features/price_checker/repository"
-	"price_checker/internal/features/price_checker/transport"
+	"price_checker/internal/features/price_tracker/repository"
+	"price_checker/internal/features/price_tracker/transport"
 	"price_checker/internal/features/price_tracker/service"
 )
 

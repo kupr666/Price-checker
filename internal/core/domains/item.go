@@ -5,10 +5,10 @@ import (
 )
 
 type Item struct {
-	ID				int64
-	URL 			string
-	CurrentPrice	float64
-	TargetPrice 	float64
-	LastChecked 	time.Time
+	ID				int64 		`json:"id"`
+	URL 			string 		`json:"url"`
+	CurrentPrice	float64 	`json:"current_price"`
+	TargetPrice 	float64 	`json:"target_price"`
+	LastChecked 	time.Time 	`json:"last_checked"`
 }
 
