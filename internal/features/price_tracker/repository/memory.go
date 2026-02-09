@@ -25,7 +25,7 @@ func (s *Storage) Add(item domains.Item) (domains.Item, error) {
 
 	for _, exists := range s.items {
 		if exists.URL == item.URL {
-			return domains.Item{}, ErrUrlExists
+			return domains.Item{}, domains.ErrUrlExists
 		}
 	}
 	item.ID = s.nextID
@@ -40,7 +40,7 @@ func (s *Storage) Delete(id int64) error {
 	defer s.mu.Unlock()
 
 	if _, ok := s.items[id]; !ok {
-		return ErrItemNotFound
+		return domains.ErrItemNotFound
 	}
 
 	delete(s.items, id)
@@ -66,7 +66,7 @@ func (s *Storage) UpdatePrice(id int64, newPrice float64) error {
 
 	item, ok := s.items[id]
 	if !ok {
-		return ErrItemNotFound
+		return domains.ErrItemNotFound
 	}
 
 	item.CurrentPrice = newPrice
