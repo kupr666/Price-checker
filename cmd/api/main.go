@@ -1,22 +1,29 @@
 package main
 
 import (
-	"log"
 	"errors"
+	"log"
 	"net/http"
-	 
+	"time"
+
 	"price_checker/internal/features/price_tracker/repository"
-	"price_checker/internal/features/price_tracker/transport"
 	"price_checker/internal/features/price_tracker/service"
+	"price_checker/internal/features/price_tracker/transport"
+	"price_checker/internal/features/price_tracker/scraper"
 )
 
 func main() {
 
 	repo := repository.NewStorage()
 
-	svc := service.NewPriceService(repo)
+	htmlScraper := scraper.NewGoQueryScrapper()
+
+	svc := service.NewPriceService(repo, htmlScraper)
 
 	handler := transport.NewHandler(svc)
+
+	// update prices of items
+	svc.StartChecking(1 * time.Minute)
 
 	// create router
 	mux := http.NewServeMux()
