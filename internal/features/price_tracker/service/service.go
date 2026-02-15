@@ -71,6 +71,9 @@ func (s *PriceService) CheckAllPrices() {
 					continue
 				}
 				s.repo.UpdatePrice(item.ID, newPrice)
+				if newPrice <= item.TargetPrice {
+					log.Printf("Price for %s drepped to %.2f (target %.2f)", item.URL,newPrice, item.TargetPrice)
+				}
 			}
 		}(i)
 	}

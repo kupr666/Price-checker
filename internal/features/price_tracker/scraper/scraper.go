@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 	"net/http"
+	"net/url"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
 )
@@ -15,71 +16,75 @@ type Scraper interface {
 
 type goQueryScraper struct {
 	client *http.Client
+	selectors map[string]string
 }
 
 func NewGoQueryScrapper() * goQueryScraper{ 
 	return &goQueryScraper {
 		client: &http.Client{Timeout: 10 * time.Second},
+		selectors: map[string]string{
+			"future-phone.ru": ".sp_price span",
+		},
 	}
 }
 
 func(s *goQueryScraper) FetchCurrentPrice(itemURL string) (float64, error) {
 
-	// skip after 10 sec if site is'n working
-	client := &http.Client{Timeout: 10 * time.Second}
+	// parse url
+	parsedURL, err := url.Parse(itemURL)
+	if err != nil {
+		return 0, fmt.Errorf("invalid url: %w", err)
+	}
 
-	// sent request on particular URL
+	// extract clean url without www.
+	hostname := parsedURL.Hostname()
+	hostname = strings.TrimPrefix(hostname, "www.")
+
+	// find appropriate sellector in map
+	siteSelector, ok := s.selectors[hostname]
+	if !ok {
+		return 0, fmt.Errorf("no selectors found for domain: %s", hostname)
+	}
+
+	// prepare request for sending
 	req, err := http.NewRequest("GET", itemURL, nil)
 	if err != nil {
 		return 0, err
 	}
 
-	// set header User-Agent (показывает откуда пришёл запрос - если бы этой строки небыло, то postman)
+	// change headers to escape ban from server
 	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
-	req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
-	req.Header.Set("Accept-Language", "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7")
-	req.Header.Set("Cache-Control", "no-cache")
-	req.Header.Set("Pragma", "no-cache")	
+
 
 	// do sends http request and return http response
 	// open network connection
-	resp, err := client.Do(req)
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return 0, err
 	}
 	// close network connection 
 	defer resp.Body.Close()
 
-	fmt.Println("Status code", resp.StatusCode)
-	// get http response from the other hand - if not 200 --> error
-	if resp.StatusCode != 200 {
-		return 0, fmt.Errorf("failed to fetch page: status code %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("site returned error status: %d", resp.StatusCode)
 	}
 
-	// goquery library convert html text to DOM tree
 	doc, err := goquery.NewDocumentFromReader(resp.Body)
 	if err != nil {
-		return 0, err 
-	}
-
-	// slice with different html which depends on site
-	sellectors := []string {
-		".sp_price span",
+		return 0, fmt.Errorf("failed to parse html: %w", err)
 	}
 	
-	var priceStr string
 
-	// first - return first tag from all found tags. Text - extract text from this tag
-	for _, selector := range sellectors {
-		foundText := doc.Find(selector).First().Text()
-		if foundText != "" {
-			priceStr = foundText
-			break
-		}
+	priceStr := doc.Find(siteSelector).First().Text() 
+	if priceStr == "" {
+		return 0, fmt.Errorf("price element not found with selector: %s", siteSelector)
 	}
 	
 	// remove all rubbish from price (like $, _, space and etc)
 	price := s.parsePrice(priceStr)
+	if price == 0 {
+		return 0, fmt.Errorf("failed to parse price from string: %s", priceStr)
+	}
 
 	return price, nil
 }
