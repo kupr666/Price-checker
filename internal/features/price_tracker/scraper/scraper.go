@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
+	"go.uber.org/zap"
+	// "go.uber.org/zap/zapcore"
 )
 
 type Scraper interface {
@@ -17,11 +19,13 @@ type Scraper interface {
 type goQueryScraper struct {
 	client *http.Client
 	selectors map[string]string
+	logger *zap.Logger
 }
 
-func NewGoQueryScrapper() * goQueryScraper{ 
+func NewGoQueryScrapper(logger *zap.Logger) * goQueryScraper{ 
 	return &goQueryScraper {
 		client: &http.Client{Timeout: 10 * time.Second},
+		logger: logger,
 		selectors: map[string]string{
 			"future-phone.ru": ".sp_price span",
 		},
@@ -29,6 +33,8 @@ func NewGoQueryScrapper() * goQueryScraper{
 }
 
 func(s *goQueryScraper) FetchCurrentPrice(itemURL string) (float64, error) {
+
+	s.logger.Debug("Attempting to fetch price", zap.String("url", itemURL))
 
 	// parse url
 	parsedURL, err := url.Parse(itemURL)

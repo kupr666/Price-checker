@@ -4,11 +4,17 @@ import (
 	"fmt"
 	"log"
 	"price_checker/internal/core/domains"
+	"price_checker/internal/features/price_tracker/scraper"
 	"sync"
 	"time"
-	"price_checker/internal/features/price_tracker/scraper"
 
+	"go.uber.org/zap"
+	// "go.uber.org/zap/zapcore"
 )
+
+type Notifier interface {
+	Notify(message string) error
+}
 
 type Repository interface {
 	Add(domains.Item) (domains.Item, error)
@@ -20,12 +26,16 @@ type Repository interface {
 type PriceService struct {
 	repo Repository
 	scraper scraper.Scraper
+	logger *zap.Logger
+	notifier Notifier
 }
 
-func NewPriceService(repo Repository, sc scraper.Scraper) *PriceService {
+func NewPriceService(repo Repository, sc scraper.Scraper, logger *zap.Logger, n Notifier) *PriceService {
 	return &PriceService{
 		repo: repo,
 		scraper: sc,
+		logger: logger,
+		notifier: n,
 	}
 }
 
@@ -36,7 +46,7 @@ func (s *PriceService) StartChecking(interval time.Duration) {
 
 	go func () {
 		for range ticker.C {
-			log.Println("--- Starting background price check")
+			s.logger.Info("--- Starting background price check")
 			s.CheckAllPrices()	
 		}
 	}()
@@ -44,9 +54,12 @@ func (s *PriceService) StartChecking(interval time.Duration) {
 }
 
 func (s *PriceService) CheckAllPrices() {
+
+	s.logger.Info("Starting background price check cycle")
+
 	items, err := s.repo.GetAll()
 	if err != nil {
-		log.Printf("Worker error: failed to get items: %v", err)
+		s.logger.Error("failed to retrieve items from repository", zap.Error(err))
 		return
 	}
 
@@ -65,14 +78,33 @@ func (s *PriceService) CheckAllPrices() {
 			// worker hear channel till channel isn't closed
 			// 5 gorutines immediately creates. The channel is empty -> workers block and wait items
 			for item := range jobs {
+
+				s.logger.Debug("worker processing item",
+					zap.Int64("item_id", item.ID),
+					zap.String("item_url", item.URL),
+				)
+
 				newPrice, err := s.scraper.FetchCurrentPrice(item.URL)
 				if err != nil {
-					log.Printf("Error: %v", err)
+					s.logger.Debug("scraping failed", zap.Error(err), zap.String("url_item", item.URL))
 					continue
 				}
+
 				s.repo.UpdatePrice(item.ID, newPrice)
+
 				if newPrice <= item.TargetPrice {
-					log.Printf("Price for %s drepped to %.2f (target %.2f)", item.URL,newPrice, item.TargetPrice)
+					s.logger.Info("Target reached",
+						zap.String("url", item.URL),
+						zap.Float64("price", newPrice),
+						zap.Float64("target", item.TargetPrice),
+					)
+
+					msg := fmt.Sprintf("Target reached!\nItem: %s\nNew Price: %.2f\nTarget: %.2f",
+					item.URL, newPrice, item.TargetPrice)
+
+					if err := s.notifier.Notify(msg); err != nil {
+						s.logger.Error("failed to send notification", zap.Error(err))
+					}
 				}
 			}
 		}(i)
@@ -89,6 +121,8 @@ func (s *PriceService) CheckAllPrices() {
 
 	// main gorutine musn't finish untill workers are done
 	wg.Wait()
+
+	s.logger.Info("Price check cycle completed", zap.Int("items_processed", len(items)))
 }
 
 
