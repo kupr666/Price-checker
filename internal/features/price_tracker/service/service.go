@@ -7,6 +7,7 @@ import (
 	"price_checker/internal/features/price_tracker/scraper"
 	"sync"
 	"time"
+	"context"
 
 	"go.uber.org/zap"
 	// "go.uber.org/zap/zapcore"
@@ -17,10 +18,10 @@ type Notifier interface {
 }
 
 type Repository interface {
-	Add(domains.Item) (domains.Item, error)
-	Delete(int64) error
-	GetAll() ([]domains.Item, error)
-	UpdatePrice(int64, float64) error
+	Add(ctx context.Context, item domains.Item) (domains.Item, error)
+	Delete(ctx context.Context, id int64) error
+	GetAll(ctx context.Context) ([]domains.Item, error)
+	UpdatePrice(ctx context.Context, id int64, price float64) error
 }
 
 type PriceService struct {
@@ -40,24 +41,35 @@ func NewPriceService(repo Repository, sc scraper.Scraper, logger *zap.Logger, n 
 }
 
 // start endless loop which checks price according to the interval
-func (s *PriceService) StartChecking(interval time.Duration) {
-
-	ticker := time.NewTicker(interval)
+func (s *PriceService) StartChecking(ctx context.Context, interval time.Duration) {
 
 	go func () {
-		for range ticker.C {
-			s.logger.Info("--- Starting background price check")
-			s.CheckAllPrices()	
+
+		// instant checkPrices after launch application (to escape a minute of waiting)
+		s.logger.Info("--- Performing initial price check on startup")
+		s.CheckAllPrices(ctx)
+
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <- ticker.C:
+				s.logger.Info("--- Starting background price check")
+				s.CheckAllPrices(ctx)	
+			case <- ctx.Done():
+				s.logger.Info("Background worker received stop signal")
+				return
+			}	
 		}
 	}()
 
 }
 
-func (s *PriceService) CheckAllPrices() {
+func (s *PriceService) CheckAllPrices(ctx context.Context) {
 
 	s.logger.Info("Starting background price check cycle")
 
-	items, err := s.repo.GetAll()
+	items, err := s.repo.GetAll(ctx)
 	if err != nil {
 		s.logger.Error("failed to retrieve items from repository", zap.Error(err))
 		return
@@ -84,13 +96,13 @@ func (s *PriceService) CheckAllPrices() {
 					zap.String("item_url", item.URL),
 				)
 
-				newPrice, err := s.scraper.FetchCurrentPrice(item.URL)
+				newPrice, err := s.scraper.FetchCurrentPrice(ctx, item.URL)
 				if err != nil {
-					s.logger.Debug("scraping failed", zap.Error(err), zap.String("url_item", item.URL))
+					s.logger.Error("scraping failed", zap.Error(err), zap.String("url_item", item.URL))
 					continue
 				}
 
-				s.repo.UpdatePrice(item.ID, newPrice)
+				s.repo.UpdatePrice(ctx, item.ID, newPrice)
 
 				if newPrice <= item.TargetPrice {
 					s.logger.Info("Target reached",
@@ -127,7 +139,7 @@ func (s *PriceService) CheckAllPrices() {
 
 
 
-func (s *PriceService) CreateItem(item domains.Item) (domains.Item, error) {
+func (s *PriceService) CreateItem(ctx context.Context, item domains.Item) (domains.Item, error) {
 
 	if item.URL == "" || item.TargetPrice <= 0 {
 		return domains.Item{}, fmt.Errorf("Invalid input: url and target price are required")
@@ -135,8 +147,7 @@ func (s *PriceService) CreateItem(item domains.Item) (domains.Item, error) {
 
 	log.Printf("Creating item for url: %s", item.URL)
 
-
-	currentPrice, err := s.scraper.FetchCurrentPrice(item.URL)
+	currentPrice, err := s.scraper.FetchCurrentPrice(ctx, item.URL)
 	if err != nil {
 		return domains.Item{}, fmt.Errorf("couldn't fetch price: %w", err)
 	}
@@ -145,10 +156,10 @@ func (s *PriceService) CreateItem(item domains.Item) (domains.Item, error) {
 	item.CurrentPrice = currentPrice	
 	item.LastChecked = time.Now()	
 
-	return s.repo.Add(item)
+	return s.repo.Add(ctx, item)
 }
 
-func (s *PriceService) ListItems() ([]domains.Item, error) {
-	return s.repo.GetAll()
+func (s *PriceService) ListItems(ctx context.Context) ([]domains.Item, error) {
+	return s.repo.GetAll(ctx)
 }
 

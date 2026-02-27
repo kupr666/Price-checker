@@ -23,7 +23,7 @@ func NewLogger(logLevel string) (*zap.Logger, func() error, error) {
 	}
 
 	// first argument of mkdir func - path
-	if err := os.Mkdir("logs", 0755); err != nil {
+	if err := os.MkdirAll("logs", 0755); err != nil {
 		return nil, nil, fmt.Errorf("mkdir log folder: %w", err)
 	}
 

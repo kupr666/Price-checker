@@ -3,8 +3,8 @@ package notifier
 import (
 	"bytes"
 	"encoding/json"
-	"net/http"
 	"fmt"
+	"net/http"
 )
 
 type TelegramNotifier struct {
@@ -29,6 +29,8 @@ func (t *TelegramNotifier) Notify(message string) error {
 
 	// json marshal returns a slice of bytes in body
 	body, _ := json.Marshal(payload)
+	// we can't put body here without bytes.NewBuffer, because body is a slice of bytes
+	// http.Post require io.Reader interface as a third argument
 	resp, err := http.Post(url,"application/json", bytes.NewBuffer(body))
 	if err != nil {
 		return err
