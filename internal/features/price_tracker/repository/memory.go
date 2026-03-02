@@ -1,10 +1,11 @@
 package repository
 
 import (
-	"price_checker/internal/core/domains"	
 	"sync"
 	"time"
 	"context"
+
+	"price_checker/internal/core/domains"	
 )
 
 type Storage struct {

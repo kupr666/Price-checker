@@ -6,8 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-
-	// "log"
 	"net/http"
 	"time"
 
@@ -22,6 +20,8 @@ import (
 )
 
 func main() {
+
+
 
 	telegramToken := os.Getenv("TELEGRAM_TOKEN")
 	telegramChatID := os.Getenv("TELEGRAM_CHAT_ID")
@@ -72,7 +72,7 @@ func main() {
 	
 	quit := make(chan os.Signal, 1)
 	// when we press ctrl+c instead of killing the app instantly
-	// this func sends to quit channel message
+	// this func sends message to quit channel
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
 
 	// here we block and  wait this message
