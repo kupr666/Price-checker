@@ -3,25 +3,25 @@ package main
 import (
 	"context"
 	"errors"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"net/http"
 	"time"
 
 	"price_checker/internal/features/price_tracker/repository"
 	"price_checker/internal/features/price_tracker/scraper"
 	"price_checker/internal/features/price_tracker/service"
 	"price_checker/internal/features/price_tracker/transport"
+	"price_checker/internal/pkg/db"
 	"price_checker/internal/pkg/logger"
 	"price_checker/internal/pkg/notifier"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
 )
 
 func main() {
-
-
 
 	telegramToken := os.Getenv("TELEGRAM_TOKEN")
 	telegramChatID := os.Getenv("TELEGRAM_CHAT_ID")
@@ -36,16 +36,26 @@ func main() {
 	defer logFileClose()
 	defer l.Sync()
 
-	repo := repository.NewStorage()
+	// global application context needed to graceful shotdown
+	appCtx, cancelApp := context.WithCancel(context.Background())
+	defer cancelApp()
+
+	if err := db.RunMigrations(os.Getenv("CONNECTION_STRING")); err != nil {
+		l.Fatal("failed to run migration", zap.Error(err))
+	}
+
+	pool, err := pgxpool.New(appCtx, os.Getenv("CONNECTION_STRING"))
+	if err != nil {
+		l.Fatal("failed to connect db", zap.Error(err))
+	}
+	defer pool.Close()
+
+	repo := repository.NewPostgresStorage(pool)
 	tgNotifier := notifier.NewTelegramNotifier(telegramToken, telegramChatID)
 	htmlScraper := scraper.NewGoQueryScrapper(l)
 
 	svc := service.NewPriceService(repo, htmlScraper, l, tgNotifier)
 	handler := transport.NewHandler(svc, l)
-
-	// global application context needed to graceful shotdown
-	appCtx, cancelApp := context.WithCancel(context.Background())
-	defer cancelApp()
 
 	// update prices of items
 	svc.StartChecking(appCtx, 1 * time.Minute)
