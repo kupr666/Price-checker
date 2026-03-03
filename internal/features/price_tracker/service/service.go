@@ -2,51 +2,73 @@ package service
 
 import (
 	"fmt"
-	"log"
+	// "log"
 	"price_checker/internal/core/domains"
+	"price_checker/internal/features/price_tracker/scraper"
 	"sync"
 	"time"
-	"price_checker/internal/features/price_tracker/scraper"
+	"context"
 
+	"go.uber.org/zap"
+	// "go.uber.org/zap/zapcore"
 )
 
+type Notifier interface {
+	Notify(message string) error
+}
+
 type Repository interface {
-	Add(domains.Item) (domains.Item, error)
-	Delete(int64) error
-	GetAll() ([]domains.Item, error)
-	UpdatePrice(int64, float64) error
+	Add(context.Context, domains.Item) (domains.Item, error)
+	Delete(context.Context, int64) error
+	GetAll(context.Context) ([]domains.Item, error)
+	UpdatePrice(context.Context, int64, float64) error
 }
 
 type PriceService struct {
 	repo Repository
 	scraper scraper.Scraper
+	logger *zap.Logger
+	notifier Notifier
+	stopChan chan struct{} // add stopChannel for Graceful shotdown
 }
 
-func NewPriceService(repo Repository, sc scraper.Scraper) *PriceService {
+func NewPriceService(repo Repository, sc scraper.Scraper, logger *zap.Logger, n Notifier) *PriceService {
 	return &PriceService{
 		repo: repo,
 		scraper: sc,
+		logger: logger,
+		notifier: n,
 	}
 }
 
 // start endless loop which checks price according to the interval
-func (s *PriceService) StartChecking(interval time.Duration) {
+func (s *PriceService) StartChecking(ctx context.Context, interval time.Duration) {
 
 	ticker := time.NewTicker(interval)
 
 	go func () {
-		for range ticker.C {
-			log.Println("--- Starting background price check")
-			s.CheckAllPrices()	
+		defer ticker.Stop()
+		for {
+			select {
+			case <- ticker.C:
+				s.logger.Info("--- Starting background price check")
+				s.CheckAllPrices(ctx)	
+			case <- ctx.Done():
+				s.logger.Info("Background worker received stop signal")
+				return
+			}	
 		}
 	}()
 
 }
 
-func (s *PriceService) CheckAllPrices() {
-	items, err := s.repo.GetAll()
+func (s *PriceService) CheckAllPrices(ctx context.Context) {
+
+	s.logger.Info("Starting background price check cycle")
+
+	items, err := s.repo.GetAll(ctx)
 	if err != nil {
-		log.Printf("Worker error: failed to get items: %v", err)
+		s.logger.Error("failed to retrieve items from repository", zap.Error(err))
 		return
 	}
 
@@ -65,14 +87,35 @@ func (s *PriceService) CheckAllPrices() {
 			// worker hear channel till channel isn't closed
 			// 5 gorutines immediately creates. The channel is empty -> workers block and wait items
 			for item := range jobs {
-				newPrice, err := s.scraper.FetchCurrentPrice(item.URL)
+
+				s.logger.Debug("worker processing item",
+					zap.Int64("item_id", item.ID),
+					zap.String("item_url", item.URL),
+				)
+
+				newPrice, err := s.scraper.FetchCurrentPrice(ctx, item.URL)
 				if err != nil {
-					log.Printf("Error: %v", err)
+					s.logger.Error("scraping failed", zap.Error(err), zap.String("url_item", item.URL))
 					continue
 				}
-				s.repo.UpdatePrice(item.ID, newPrice)
+
+				if err := s.repo.UpdatePrice(ctx, item.ID, newPrice); err != nil {
+					s.logger.Error("failed to update price", zap.Error(err), zap.Int64("item_id", item.ID))
+				}
+
 				if newPrice <= item.TargetPrice {
-					log.Printf("Price for %s drepped to %.2f (target %.2f)", item.URL,newPrice, item.TargetPrice)
+					s.logger.Info("Target reached",
+						zap.String("url", item.URL),
+						zap.Float64("price", newPrice),
+						zap.Float64("target", item.TargetPrice),
+					)
+
+					msg := fmt.Sprintf("Target reached!\nItem: %s\nNew Price: %.2f\nTarget: %.2f",
+					item.URL, newPrice, item.TargetPrice)
+
+					if err := s.notifier.Notify(msg); err != nil {
+						s.logger.Error("failed to send notification", zap.Error(err))
+					}
 				}
 			}
 		}(i)
@@ -89,20 +132,20 @@ func (s *PriceService) CheckAllPrices() {
 
 	// main gorutine musn't finish untill workers are done
 	wg.Wait()
+
+	s.logger.Info("Price check cycle completed", zap.Int("items_processed", len(items)))
 }
 
 
-
-func (s *PriceService) CreateItem(item domains.Item) (domains.Item, error) {
+func (s *PriceService) CreateItem(ctx context.Context, item domains.Item) (domains.Item, error) {
 
 	if item.URL == "" || item.TargetPrice <= 0 {
 		return domains.Item{}, fmt.Errorf("Invalid input: url and target price are required")
 	}
 
-	log.Printf("Creating item for url: %s", item.URL)
+	s.logger.Info("Creating item for url", zap.String("url", item.URL))
 
-
-	currentPrice, err := s.scraper.FetchCurrentPrice(item.URL)
+	currentPrice, err := s.scraper.FetchCurrentPrice(ctx, item.URL)
 	if err != nil {
 		return domains.Item{}, fmt.Errorf("couldn't fetch price: %w", err)
 	}
@@ -111,10 +154,10 @@ func (s *PriceService) CreateItem(item domains.Item) (domains.Item, error) {
 	item.CurrentPrice = currentPrice	
 	item.LastChecked = time.Now()	
 
-	return s.repo.Add(item)
+	return s.repo.Add(ctx, item)
 }
 
-func (s *PriceService) ListItems() ([]domains.Item, error) {
-	return s.repo.GetAll()
+func (s *PriceService) ListItems(ctx context.Context) ([]domains.Item, error) {
+	return s.repo.GetAll(ctx)
 }
 

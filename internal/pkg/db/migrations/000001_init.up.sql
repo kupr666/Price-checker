@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS items (
+    id BIGSERIAL PRIMARY KEY,
+    url TEXT UNIQUE NOT NULL,
+    current_price NUMERIC(10,2) NOT NULL,
+    target_price NUMERIC(10, 2) NOT NULL,
+    last_checked TIMESTAMP WITH TIME ZONE NOT NULL
+);
+

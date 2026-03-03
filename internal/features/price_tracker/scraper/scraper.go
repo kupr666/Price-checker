@@ -1,34 +1,42 @@
 package scraper
 
 import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
-	"net/http"
-	"net/url"
-	"fmt"
+
 	"github.com/PuerkitoBio/goquery"
+	"go.uber.org/zap"
+	// "go.uber.org/zap/zapcore"
 )
 
 type Scraper interface {
-	FetchCurrentPrice(itemURL string) (float64, error)
+	FetchCurrentPrice(ctx context.Context, itemURL string) (float64, error)
 }
 
 type goQueryScraper struct {
 	client *http.Client
 	selectors map[string]string
+	logger *zap.Logger
 }
 
-func NewGoQueryScrapper() * goQueryScraper{ 
+func NewGoQueryScrapper(logger *zap.Logger) *goQueryScraper{ 
 	return &goQueryScraper {
 		client: &http.Client{Timeout: 10 * time.Second},
+		logger: logger,
 		selectors: map[string]string{
 			"future-phone.ru": ".sp_price span",
 		},
 	}
 }
 
-func(s *goQueryScraper) FetchCurrentPrice(itemURL string) (float64, error) {
+func(s *goQueryScraper) FetchCurrentPrice(ctx context.Context, itemURL string) (float64, error) {
+
+	s.logger.Debug("Attempting to fetch price", zap.String("url", itemURL))
 
 	// parse url
 	parsedURL, err := url.Parse(itemURL)
@@ -47,7 +55,7 @@ func(s *goQueryScraper) FetchCurrentPrice(itemURL string) (float64, error) {
 	}
 
 	// prepare request for sending
-	req, err := http.NewRequest("GET", itemURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", itemURL, nil)
 	if err != nil {
 		return 0, err
 	}
