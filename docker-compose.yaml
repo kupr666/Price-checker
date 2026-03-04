@@ -11,16 +11,16 @@ services:
       LOG_LEVEL: DEBUG
       SERVER_PORT: :9091
       CHECK_INTERVAL: 1m
-      CONNECTION_STRING: postgres://postgres:prime666@db:5432/postgres?sslmode=disable
+      CONNECTION_STRING: ${CONNECTION_STRING}
     ports:
       - "9091:9091"
 
   db:
     image: postgres:18.3-bookworm
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: prime666
-      POSTGRES_DB: postgres
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5442:5432"
     healthcheck:
