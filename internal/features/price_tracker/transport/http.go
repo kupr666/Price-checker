@@ -5,6 +5,7 @@ import (
 	"errors"
 	"encoding/json"
 	"net/http"
+	"strconv"
 
 	"price_checker/internal/core/domains"
 	
@@ -14,6 +15,7 @@ import (
 type Service interface {
 	 CreateItem(ctx context.Context, item domains.Item) (domains.Item, error)
 	 ListItems(ctx context.Context) ([]domains.Item, error)
+	 DeleteItem(ctx context.Context, id int64) error
 }
 
 type Handler struct {
@@ -63,7 +65,30 @@ func (h *Handler) ListItems(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	
 	w.Header().Set("Content-type", "application/json")
 	json.NewEncoder(w).Encode(items)
+}
+
+func (h *Handler) DeleteItem(w http.ResponseWriter, r *http.Request) {
+
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.svc.DeleteItem(r.Context(), id); err != nil {
+		if errors.Is(err, domains.ErrItemNotFound) {
+			h.logger.Info("Attempting to delete item", zap.Error(err))
+			http.Error(w, "item not found", http.StatusNotFound)
+			return
+		}
+
+		h.logger.Error("Failed to delete item", zap.Error(err))
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return 
+	}
+	
+	h.logger.Info("Item was deleted", zap.Int64("id", id))
+	w.WriteHeader(http.StatusNoContent)
 }

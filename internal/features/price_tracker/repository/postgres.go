@@ -53,7 +53,7 @@ func (s *PostgresStorage) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
-func (s *PostgresStorage) GetAll (ctx context.Context) ([]domains.Item, error) {
+func (s *PostgresStorage) GetAll(ctx context.Context) ([]domains.Item, error) {
 
 	query := `SELECT id, url, current_price, target_price, last_checked FROM items`
 

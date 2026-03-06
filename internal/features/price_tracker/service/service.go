@@ -29,7 +29,6 @@ type PriceService struct {
 	scraper scraper.Scraper
 	logger *zap.Logger
 	notifier Notifier
-	stopChan chan struct{} // add stopChannel for Graceful shotdown
 }
 
 func NewPriceService(repo Repository, sc scraper.Scraper, logger *zap.Logger, n Notifier) *PriceService {
@@ -64,7 +63,7 @@ func (s *PriceService) StartChecking(ctx context.Context, interval time.Duration
 
 func (s *PriceService) CheckAllPrices(ctx context.Context) {
 
-	s.logger.Info("Starting background price check cycle")
+	// s.logger.Info("Starting background price check cycle")
 
 	items, err := s.repo.GetAll(ctx)
 	if err != nil {
@@ -88,10 +87,10 @@ func (s *PriceService) CheckAllPrices(ctx context.Context) {
 			// 5 gorutines immediately creates. The channel is empty -> workers block and wait items
 			for item := range jobs {
 
-				s.logger.Debug("worker processing item",
-					zap.Int64("item_id", item.ID),
-					zap.String("item_url", item.URL),
-				)
+				// s.logger.Debug("worker processing item",
+				// 	zap.Int64("item_id", item.ID),
+				// 	zap.String("item_url", item.URL),
+				// )
 
 				newPrice, err := s.scraper.FetchCurrentPrice(ctx, item.URL)
 				if err != nil {
@@ -114,7 +113,7 @@ func (s *PriceService) CheckAllPrices(ctx context.Context) {
 					item.URL, newPrice, item.TargetPrice)
 
 					if err := s.notifier.Notify(msg); err != nil {
-						s.logger.Error("failed to send notification", zap.Error(err))
+						// s.logger.Error("failed to send notification", zap.Error(err))
 					}
 				}
 			}
@@ -161,3 +160,6 @@ func (s *PriceService) ListItems(ctx context.Context) ([]domains.Item, error) {
 	return s.repo.GetAll(ctx)
 }
 
+func (s *PriceService) DeleteItem(ctx context.Context, id int64) (error) {
+	return s.repo.Delete(ctx, id)
+}
