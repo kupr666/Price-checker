@@ -1,6 +1,9 @@
 include .env
 export
 
+service-dev-db:
+	docker compose up -d db
+
 service-run:
 	@go run cmd/api/main.go || true
 

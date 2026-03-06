@@ -36,7 +36,7 @@ func NewGoQueryScrapper(logger *zap.Logger) *goQueryScraper{
 
 func(s *goQueryScraper) FetchCurrentPrice(ctx context.Context, itemURL string) (float64, error) {
 
-	s.logger.Debug("Attempting to fetch price", zap.String("url", itemURL))
+	// s.logger.Debug("Attempting to fetch price", zap.String("url", itemURL))
 
 	// parse url
 	parsedURL, err := url.Parse(itemURL)

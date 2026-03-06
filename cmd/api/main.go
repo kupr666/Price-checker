@@ -65,6 +65,7 @@ func main() {
 	// set up router
 	mux.HandleFunc("POST /items", handler.AddItem)
 	mux.HandleFunc("GET /items", handler.ListItems)
+	mux.HandleFunc("DELETE /items/{id}", handler.DeleteItem)
 
 	srv := &http.Server{
 		Addr:	serverPort,
