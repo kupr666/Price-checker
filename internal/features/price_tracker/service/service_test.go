@@ -1,9 +1,11 @@
 package service
 
-import(
+import (
+	"fmt"
 	"context"
-	"testing"
 	"price_checker/internal/core/domains"
+	// "price_checker/internal/features/price_tracker/scraper"
+	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -12,7 +14,7 @@ import(
 )
 
 type MockRepository struct {
-	// mock.Mock gives us 2 mothods On() & Called()
+	// mock.Mock gives us 2 methods On() & Called()
 	mock.Mock
 }
 
@@ -59,10 +61,10 @@ func TestCreateItem_Success(t *testing.T) {
 	// ARRANGE 
 	repo := new(MockRepository)
 	scraper := new(MockScraper)
-	tgNotifier := new(MockNotifier)
+	notifier := new(MockNotifier)
 	logger := zap.NewNop() // fake logger (without any logs)
 
-	svc := NewPriceService(repo, scraper, logger, tgNotifier)
+	svc := NewPriceService(repo, scraper, logger, notifier)
 
 	ctx := context.Background()
 	inputItem := domains.Item{
@@ -79,7 +81,7 @@ func TestCreateItem_Success(t *testing.T) {
 
 	scraper.On("FetchCurrentPrice", ctx, inputItem.URL).Return(26900.0, nil)
 	repo.On("Add", ctx, mock.AnythingOfType("domains.Item")).Return(expectedItem, nil)
-
+	
 	// ACT
 	// call of function which we are testing
 	result, err := svc.CreateItem(ctx, inputItem)
@@ -90,4 +92,96 @@ func TestCreateItem_Success(t *testing.T) {
 
 	repo.AssertExpectations(t)
 	scraper.AssertExpectations(t)
+}
+
+func TestCreateItem_ScraperFailed(t *testing) {
+
+	// ARRANGE
+	repo := new()
+}
+
+func TestCheckAllPrices_TargetReached(t *testing.T) {
+	
+	// ARRANGE
+	repo := new(MockRepository)
+	scraper := new(MockScraper)
+	notifier := new(MockNotifier)
+	logger := zap.NewNop()
+
+	svc := NewPriceService(repo, scraper, logger, notifier)
+
+	ctx := context.Background()
+	inputItems := []domains.Item{
+		{ID: 1, URL: "https://future-phone.ru/catalog/smartfony_i_gadzhety/smartfony/apple/iphone_se_2022/iphone_se_2022_64gb_starlight", 
+		TargetPrice: 28000},
+	}
+
+	repo.On("GetAll", ctx).Return(inputItems, nil)
+	scraper.On("FetchCurrentPrice", ctx, inputItems[0].URL).Return(26900.0, nil)
+	repo.On("UpdatePrice", ctx, inputItems[0].ID, 26900.0).Return(nil)
+	notifier.On("Notify", mock.AnythingOfType("string")).Return(nil)
+
+	// ACT
+	svc.CheckAllPrices(ctx)
+
+	// ASSERT (all three methods must call in this case)
+	repo.AssertExpectations(t)
+	scraper.AssertExpectations(t)
+	notifier.AssertExpectations(t)
+}
+
+func TestCheckAllPrices_TargetNotReached(t *testing.T) {
+	// ARRANGE
+	repo := new(MockRepository)
+	scraper := new(MockScraper)
+	notifier := new(MockNotifier)
+	logger := zap.NewNop()
+
+	svc := NewPriceService(repo, scraper, logger, notifier)
+
+	ctx := context.Background()
+	inputItems := []domains.Item{
+		{ID: 1, URL: "https://future-phone.ru/catalog/smartfony_i_gadzhety/smartfony/apple/iphone_se_2022/iphone_se_2022_64gb_starlight", 
+		TargetPrice: 28000},
+	}
+
+	repo.On("GetAll", ctx).Return(inputItems, nil)
+	scraper.On("FetchCurrentPrice", ctx, inputItems[0].URL).Return(26900.0, nil)
+	repo.On("UpdatePrice", ctx, inputItems[0].ID, 26900.0).Return(nil)
+	notifier.On("Notify", mock.AnythingOfType("string")).Return(nil)
+
+	// ACT
+	svc.CheckAllPrices(ctx)
+
+	// ASSERT (all three methods must call in this case)
+	repo.AssertExpectations(t)
+	scraper.AssertExpectations(t)
+	notifier.AssertExpectations(t)
+
+}
+
+func TestCheckAllPrices_ScraperFailed(t *testing.T) {
+	// ARRANGE
+	repo := new(MockRepository)
+	scraper := new(MockScraper)
+	notifier := new(MockNotifier)
+	logger := zap.NewNop()
+
+	svc := NewPriceService(repo, scraper, logger, notifier)
+
+	ctx := context.Background()
+	inputItems := []domains.Item{
+		{ID: 1, URL: "https://future-phone.ru/catalog/smartfony_i_gadzhety/smartfony/apple/iphone_se_2022/iphone_se_2022_64gb_starlight", 
+		TargetPrice: 28000},
+	}
+
+	repo.On("GetAll", ctx).Return(inputItems, nil)
+	scraper.On("FetchCurrentPrice", ctx, inputItems[0].URL).Return(0.0, fmt.Errorf("site unavailable"))
+
+	// ACT 
+	svc.CheckAllPrices(ctx)
+
+	// ASSERT that last 2 methods of function CheckAllPrices weren't called
+	repo.AssertNotCalled(t, "UpdatePrice")
+	notifier.AssertNotCalled(t, "Notify")
 }
