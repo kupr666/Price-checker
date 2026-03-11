@@ -13,6 +13,8 @@ import (
 	"go.uber.org/zap"
 )
 
+const testURL = "https://future-phone.ru/catalog/smartfony_i_gadzhety/smartfony/apple/iphone_se_2022/iphone_se_2022_64gb_starlight"
+
 type MockRepository struct {
 	// mock.Mock gives us 2 methods On() & Called()
 	mock.Mock
@@ -68,15 +70,15 @@ func TestCreateItem_Success(t *testing.T) {
 
 	ctx := context.Background()
 	inputItem := domains.Item{
-		URL: "https://future-phone.ru/catalog/smartfony_i_gadzhety/smartfony/apple/iphone_se_2022/iphone_se_2022_64gb_starlight" ,
+		URL: testURL,
 		TargetPrice: 30000,	
 	} 
 
 	expectedItem := domains.Item{
 		ID: 1,
-		URL: "https://future-phone.ru/catalog/smartfony_i_gadzhety/smartfony/apple/iphone_se_2022/iphone_se_2022_64gb_starlight,", 
+		URL: testURL, 
 		CurrentPrice: 26900,
-		TargetPrice: 25000,
+		TargetPrice: 30000,
 	}
 
 	scraper.On("FetchCurrentPrice", ctx, inputItem.URL).Return(26900.0, nil)
@@ -94,10 +96,32 @@ func TestCreateItem_Success(t *testing.T) {
 	scraper.AssertExpectations(t)
 }
 
-func TestCreateItem_ScraperFailed(t *testing) {
+func TestCreateItem_ScraperFailed(t *testing.T) {
 
 	// ARRANGE
-	repo := new()
+	repo := new(MockRepository)
+	scraper := new(MockScraper)
+	notifier := new(MockNotifier)
+	logger := zap.NewNop()
+
+	svc := NewPriceService(repo, scraper, logger, notifier)
+
+	ctx := context.Background()
+	inputItem := domains.Item {
+		URL: testURL,
+		TargetPrice: 26900,
+	}
+
+	scraper.On("FetchCurrentPrice", ctx, inputItem.URL).Return(0.0, fmt.Errorf("site unavailable"))
+
+	// ACT
+	result, err := svc.CreateItem(ctx, inputItem)
+
+	// ASSERT
+	assert.Error(t, err)
+	assert.Equal(t, domains.Item{}, result)
+	repo.AssertNotCalled(t, "Add")
+	scraper.AssertExpectations(t)
 }
 
 func TestCheckAllPrices_TargetReached(t *testing.T) {
@@ -112,7 +136,8 @@ func TestCheckAllPrices_TargetReached(t *testing.T) {
 
 	ctx := context.Background()
 	inputItems := []domains.Item{
-		{ID: 1, URL: "https://future-phone.ru/catalog/smartfony_i_gadzhety/smartfony/apple/iphone_se_2022/iphone_se_2022_64gb_starlight", 
+		{ID: 1, 
+		URL: testURL, 
 		TargetPrice: 28000},
 	}
 
@@ -141,14 +166,13 @@ func TestCheckAllPrices_TargetNotReached(t *testing.T) {
 
 	ctx := context.Background()
 	inputItems := []domains.Item{
-		{ID: 1, URL: "https://future-phone.ru/catalog/smartfony_i_gadzhety/smartfony/apple/iphone_se_2022/iphone_se_2022_64gb_starlight", 
-		TargetPrice: 28000},
+		{ID: 1, URL: testURL, 
+		TargetPrice: 20000},
 	}
 
 	repo.On("GetAll", ctx).Return(inputItems, nil)
 	scraper.On("FetchCurrentPrice", ctx, inputItems[0].URL).Return(26900.0, nil)
 	repo.On("UpdatePrice", ctx, inputItems[0].ID, 26900.0).Return(nil)
-	notifier.On("Notify", mock.AnythingOfType("string")).Return(nil)
 
 	// ACT
 	svc.CheckAllPrices(ctx)
@@ -156,7 +180,7 @@ func TestCheckAllPrices_TargetNotReached(t *testing.T) {
 	// ASSERT (all three methods must call in this case)
 	repo.AssertExpectations(t)
 	scraper.AssertExpectations(t)
-	notifier.AssertExpectations(t)
+	notifier.AssertNotCalled(t, "Notify")
 
 }
 
@@ -171,7 +195,7 @@ func TestCheckAllPrices_ScraperFailed(t *testing.T) {
 
 	ctx := context.Background()
 	inputItems := []domains.Item{
-		{ID: 1, URL: "https://future-phone.ru/catalog/smartfony_i_gadzhety/smartfony/apple/iphone_se_2022/iphone_se_2022_64gb_starlight", 
+		{ID: 1, URL: testURL, 
 		TargetPrice: 28000},
 	}
 
