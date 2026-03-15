@@ -10,7 +10,6 @@ import (
 	"context"
 
 	"go.uber.org/zap"
-	// "go.uber.org/zap/zapcore"
 )
 
 type Notifier interface {
@@ -50,6 +49,7 @@ func (s *PriceService) StartChecking(ctx context.Context, interval time.Duration
 		for {
 			select {
 			case <- ticker.C:
+
 				s.logger.Info("--- Starting background price check")
 				s.CheckAllPrices(ctx)	
 			case <- ctx.Done():
