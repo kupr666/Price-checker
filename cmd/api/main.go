@@ -16,6 +16,7 @@ import (
 	"price_checker/internal/pkg/db"
 	"price_checker/internal/pkg/logger"
 	"price_checker/internal/pkg/notifier"
+	"price_checker/internal/features/price_tracker/cache"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
@@ -50,11 +51,14 @@ func main() {
 	}
 	defer pool.Close()
 
+	redisCache := cache.NewRedisCache(os.Getenv("REDIS_ADDR"), os.Getenv("REDIS_PASSWORD"), 0, 10*(time.Minute))
+	htmlScraper := scraper.NewGoQueryScrapper(l)
+	cachedScraper := scraper.NewCacheScraper(htmlScraper, redisCache, l)
+
 	repo := repository.NewPostgresStorage(pool)
 	tgNotifier := notifier.NewTelegramNotifier(telegramToken, telegramChatID)
-	htmlScraper := scraper.NewGoQueryScrapper(l)
 
-	svc := service.NewPriceService(repo, htmlScraper, l, tgNotifier)
+	svc := service.NewPriceService(repo, cachedScraper, l, tgNotifier)
 	handler := transport.NewHandler(svc, l)
 
 	// update prices of items

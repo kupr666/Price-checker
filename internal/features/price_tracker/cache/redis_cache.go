@@ -3,11 +3,11 @@ package cache
 import (
 	"context"
 	"fmt"
-	"os"
+	// "os"
 	"strconv"
 	"time"
 
-	"github.com/go-redis/redis"
+	"github.com/redis/go-redis/v9"
 )
 
 type PriceCache interface {
@@ -20,11 +20,11 @@ type RedisCache struct {
 	ttl time.Duration
 }
 
-func NewRedisCache(client *redis.Client, ttl time.Duration) *RedisCache {
-	client = redis.NewClient(&redis.Options{
-		Addr: os.Getenv("REDIS_ADDR"),
-		Password: os.Getenv("REDIS_PASSWORD"),
-		DB: 0, 				  // hardcoded (zero by default)
+func NewRedisCache(addr, password string, db int, ttl time.Duration) *RedisCache {
+	client := redis.NewClient(&redis.Options{
+		Addr: addr,
+		Password: password,
+		DB: db, 				  // hardcoded (zero by default)
 	})
 
 	return &RedisCache{
@@ -40,7 +40,7 @@ func NewRedisCache(client *redis.Client, ttl time.Duration) *RedisCache {
 func (c *RedisCache) Get(ctx context.Context, url string) (float64, bool, error) {
 	key := buildKey(url)
 
-	val, err := c.client.Get(key).Result()
+	val, err := c.client.Get(ctx, key).Result()
 	if err == redis.Nil {
 		return 0, false, nil
 	}
@@ -63,7 +63,7 @@ func (c *RedisCache) Set(ctx context.Context, url string, price float64) error {
 	// convert float into a string for redis
 	val := strconv.FormatFloat(price, 'f', 2, 64)
 
-	if err := c.client.Set(key, val, c.ttl).Err(); err != nil {
+	if err := c.client.Set(ctx, key, val, c.ttl).Err(); err != nil {
 		return fmt.Errorf("redis set: %w", err)
 	}
 

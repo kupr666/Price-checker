@@ -2,7 +2,7 @@ include .env
 export
 
 service-dev-db:
-	docker compose up -d db
+	docker compose up -d --build db
 
 service-dev-redis:
 	docker compose up -d redis
